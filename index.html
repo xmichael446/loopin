@@ -176,6 +176,11 @@
     border: 1px solid var(--surface-edge);
     border-radius: 999px;
     box-shadow: var(--shadow);
+    transition: border-color 0.15s ease;
+  }
+
+  .signup-row:focus-within {
+    border-color: var(--coral);
   }
 
   .signup-row input {
@@ -214,8 +219,7 @@
 
   .signup-row button:focus-visible,
   .signup-row input:focus-visible {
-    outline: 2px solid var(--coral);
-    outline-offset: 2px;
+    outline: none;
   }
 
   .signup-note {
@@ -622,7 +626,9 @@
         return;
       }
       if (err) err.classList.remove('show');
-      form.classList.add('done');
+      document.querySelectorAll('.signup').forEach(function (el) {
+        el.classList.add('done');
+      });
     });
   }
 
