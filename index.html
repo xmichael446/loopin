@@ -387,7 +387,7 @@
     <form class="signup" id="signupForm" novalidate>
       <div class="signup-row">
         <label for="phone" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Phone number</label>
-        <input type="tel" id="phone" name="phone" placeholder="Your phone number" autocomplete="tel" inputmode="tel" required>
+        <input type="tel" id="phone" name="phone" placeholder="+998 (__) ___-__-__" autocomplete="tel" inputmode="numeric" maxlength="19" required>
         <button type="submit">Join the waitlist</button>
       </div>
       <p class="signup-note">One tap. No account, no spam — just an early invite.</p>
@@ -435,7 +435,7 @@
   <h2 class="display">Be the first two people on it.</h2>
   <form class="signup" id="signupForm2" novalidate>
     <div class="signup-row">
-      <input type="tel" id="phone2" name="phone2" placeholder="Your phone number" autocomplete="tel" inputmode="tel" required>
+      <input type="tel" id="phone2" name="phone2" placeholder="+998 (__) ___-__-__" autocomplete="tel" inputmode="numeric" maxlength="19" required>
       <button type="submit">Join the waitlist</button>
     </div>
     <p class="signup-note">One tap. No account, no spam — just an early invite.</p>
@@ -576,15 +576,43 @@
     mq.addEventListener('change', function () { draw(1); });
   })();
 
+  function uzDigits(v) {
+    var d = v.replace(/\D/g, '');
+    if (d.slice(0, 3) === '998') d = d.slice(3);
+    return d.slice(0, 9);
+  }
+
+  function formatUzPhone(d) {
+    var out = '+998';
+    if (d.length > 0) out += ' (' + d.slice(0, 2);
+    if (d.length >= 2) out += ')';
+    if (d.length > 2) out += ' ' + d.slice(2, 5);
+    if (d.length > 5) out += '-' + d.slice(5, 7);
+    if (d.length > 7) out += '-' + d.slice(7, 9);
+    return out;
+  }
+
   function phoneLooksValid(v) {
-    var digits = v.replace(/\D/g, '');
-    return digits.length >= 7 && digits.length <= 15;
+    return uzDigits(v).length === 9;
   }
 
   function wireForm(formId, inputId) {
     var form = document.getElementById(formId);
     var input = document.getElementById(inputId);
     if (!form) return;
+
+    input.addEventListener('focus', function () {
+      if (!input.value) input.value = '+998 (';
+    });
+    input.addEventListener('input', function () {
+      input.value = formatUzPhone(uzDigits(input.value));
+      var err = form.querySelector('.error-msg');
+      if (err) err.classList.remove('show');
+    });
+    input.addEventListener('blur', function () {
+      if (input.value === '+998' || input.value === '+998 (') input.value = '';
+    });
+
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       var err = form.querySelector('.error-msg');
@@ -595,10 +623,6 @@
       }
       if (err) err.classList.remove('show');
       form.classList.add('done');
-    });
-    input.addEventListener('input', function () {
-      var err = form.querySelector('.error-msg');
-      if (err) err.classList.remove('show');
     });
   }
 
