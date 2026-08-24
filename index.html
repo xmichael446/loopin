@@ -274,6 +274,15 @@
     .signup-row input { text-align: center; padding: 0.75rem 1rem; }
   }
 
+  /* Short viewports: keep everything on one screen */
+  @media (max-height: 750px) {
+    .nav { padding: 0.9rem clamp(1.25rem, 5vw, 4rem); }
+    .hero-body { padding: 1rem clamp(1.25rem, 6vw, 4rem) 1.5rem; gap: 1.1rem; }
+    .headline { font-size: clamp(1.95rem, 5.6vw, 3.2rem); }
+    .subhead { font-size: 0.95rem; line-height: 1.45; }
+    footer { padding-bottom: 1rem; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
   }
