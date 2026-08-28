@@ -156,6 +156,15 @@
     margin: 0;
   }
 
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
   /* ---------- Form ---------- */
 
   .signup {
@@ -259,6 +268,78 @@
 
   .error-msg.show { display: block; }
 
+  .signup-row--name { padding-right: 1.1rem; }
+
+  .signup-row button[disabled] { opacity: 0.6; cursor: default; }
+
+  /* Waiting-on-Telegram state */
+
+  .pending {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    text-align: center;
+  }
+
+  .signup.sent .pending { display: flex; }
+  .signup.sent .signup-row,
+  .signup.sent .signup-note { display: none; }
+  .signup.done .pending { display: none; }
+
+  .pending-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--coral);
+    color: var(--coral-ink);
+    text-decoration: none;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    padding: 0.85rem 1.5rem;
+    border-radius: 999px;
+    box-shadow: var(--shadow);
+    transition: transform 0.15s ease, filter 0.15s ease;
+  }
+
+  .pending-btn:hover { filter: brightness(1.08); }
+  .pending-btn:active { transform: scale(0.97); }
+
+  .pending-note {
+    margin: 0;
+    max-width: 24rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .waiting {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  .waiting .pulse {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--gold);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.25; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .waiting .pulse { animation: none; opacity: 0.8; }
+  }
+
   footer {
     position: relative;
     z-index: 2;
@@ -310,16 +391,27 @@
     <p class="subhead">Pick a place, set what you want to spend and how long you have — Loopin builds a route of stops that fits, on a map, ready to go.</p>
 
     <form class="signup" id="signupForm" novalidate>
-      <div class="signup-row">
-        <label for="phone" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Phone number</label>
-        <input type="tel" id="phone" name="phone" placeholder="+998 (__) ___-__-__" autocomplete="tel" inputmode="numeric" maxlength="19" required>
-        <button type="submit">Join the waitlist</button>
+      <div class="signup-row signup-row--name">
+        <label for="name" class="sr-only">Your name</label>
+        <input type="text" id="name" name="name" placeholder="Your name" autocomplete="given-name" maxlength="100" required>
       </div>
-      <p class="signup-note">One tap. No account, no spam — just an early invite.</p>
+      <div class="signup-row">
+        <label for="phone" class="sr-only">Phone number</label>
+        <input type="tel" id="phone" name="phone" placeholder="+998 (__) ___-__-__" autocomplete="tel" inputmode="numeric" maxlength="19" required>
+        <button type="submit">Join with Telegram</button>
+      </div>
+      <p class="signup-note">One tap in Telegram. No account, no spam — just an early invite.</p>
       <p class="error-msg" id="errorMsg">That doesn't look like a phone number — mind trying again?</p>
+
+      <div class="pending">
+        <a class="pending-btn" id="tgLink" href="#" target="_blank" rel="noopener">Confirm in Telegram</a>
+        <p class="pending-note">Tap “📱 Share my phone number” in the chat — Telegram confirms the number for you, so there’s no code to type. This page updates itself.</p>
+        <span class="waiting"><span class="pulse"></span> Waiting for Telegram…</span>
+      </div>
+
       <div class="success" role="status">
         <span class="dot"></span>
-        You're on the list. We'll text you.
+        <span class="success-text">You’re on the list.</span>
       </div>
     </form>
   </div>
@@ -457,6 +549,12 @@
     mq.addEventListener('change', function () { draw(1); });
   })();
 
+  var API_BASE = 'https://api.lupin.uz';
+  var BOT_LINK = 'https://t.me/loopin_login_bot?start=';
+  var POLL_MS = 2500;
+  var GIVE_UP_MS = 11 * 60 * 1000;   // sessions live 10 minutes server-side
+  var STORE_KEY = 'loopin.start_param';
+
   function uzDigits(v) {
     var d = v.replace(/\D/g, '');
     if (d.slice(0, 3) === '998') d = d.slice(3);
@@ -477,36 +575,176 @@
     return uzDigits(v).length === 9;
   }
 
+  function toE164(v) {
+    return '+998' + uzDigits(v);
+  }
+
+  function remember(param) {
+    try {
+      if (param) sessionStorage.setItem(STORE_KEY, param);
+      else sessionStorage.removeItem(STORE_KEY);
+    } catch (e) { /* private mode — the flow still works, it just can't resume */ }
+  }
+
+  function recall() {
+    try { return sessionStorage.getItem(STORE_KEY); } catch (e) { return null; }
+  }
+
   function wireForm(formId, inputId) {
     var form = document.getElementById(formId);
-    var input = document.getElementById(inputId);
     if (!form) return;
+
+    var input = document.getElementById(inputId);
+    var nameInput = document.getElementById('name');
+    var button = form.querySelector('button[type="submit"]');
+    var err = form.querySelector('.error-msg');
+    var tgLink = document.getElementById('tgLink');
+    var successText = form.querySelector('.success-text');
+
+    var param = null;
+    var timer = null;
+    var deadline = 0;
+
+    function showError(msg) {
+      if (!err) return;
+      err.textContent = msg;
+      err.classList.add('show');
+    }
+
+    function clearError() {
+      if (err) err.classList.remove('show');
+    }
+
+    function stopPolling() {
+      if (timer) { clearInterval(timer); timer = null; }
+      param = null;
+    }
+
+    function succeed(message) {
+      stopPolling();
+      remember(null);
+      if (successText) successText.textContent = message;
+      form.classList.remove('sent');
+      form.classList.add('done');
+    }
+
+    function expire() {
+      stopPolling();
+      remember(null);
+      form.classList.remove('sent');
+      showError('That confirmation link timed out. Send it again and confirm in Telegram.');
+    }
+
+    function check() {
+      if (!param) return;
+      if (Date.now() > deadline) { expire(); return; }
+      var current = param;
+      fetch(API_BASE + '/waitlist/status?start_param=' + encodeURIComponent(current))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || param !== current) return;
+          if (data.status === 'verified') {
+            succeed(data.position
+              ? 'You’re on the list — #' + data.position + '.'
+              : 'You’re on the list.');
+          } else if (data.status === 'expired') {
+            expire();
+          }
+        })
+        .catch(function () { /* offline or a blip — the next tick retries */ });
+    }
+
+    function watch(startParam) {
+      param = startParam;
+      deadline = Date.now() + GIVE_UP_MS;
+      remember(startParam);
+      if (timer) clearInterval(timer);
+      timer = setInterval(check, POLL_MS);
+      check();
+    }
 
     input.addEventListener('focus', function () {
       if (!input.value) input.value = '+998 (';
     });
     input.addEventListener('input', function () {
       input.value = formatUzPhone(uzDigits(input.value));
-      var err = form.querySelector('.error-msg');
-      if (err) err.classList.remove('show');
+      clearError();
     });
     input.addEventListener('blur', function () {
       if (input.value === '+998' || input.value === '+998 (') input.value = '';
     });
+    if (nameInput) nameInput.addEventListener('input', clearError);
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
-      var err = form.querySelector('.error-msg');
+      clearError();
+
+      var name = nameInput ? nameInput.value.trim() : '';
+      if (!name) {
+        showError('Mind adding your name first?');
+        if (nameInput) nameInput.focus();
+        return;
+      }
       if (!phoneLooksValid(input.value)) {
-        if (err) err.classList.add('show');
+        showError('That doesn’t look like a phone number — mind trying again?');
         input.focus();
         return;
       }
-      if (err) err.classList.remove('show');
-      document.querySelectorAll('.signup').forEach(function (el) {
-        el.classList.add('done');
+
+      var label = button.textContent;
+      button.disabled = true;
+      button.textContent = 'One sec…';
+
+      fetch(API_BASE + '/waitlist/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, phone: toE164(input.value) })
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (body) {
+          return { status: r.status, body: body };
+        });
+      }).then(function (res) {
+        button.disabled = false;
+        button.textContent = label;
+
+        if (res.status === 200 && res.body.start_param) {
+          if (tgLink) tgLink.href = res.body.deep_link || (BOT_LINK + res.body.start_param);
+          form.classList.add('sent');
+          watch(res.body.start_param);
+          // Best effort: some browsers block this because the fetch broke the
+          // user-gesture chain. The "Confirm in Telegram" button is the
+          // reliable path, and it is already on screen.
+          try { window.open(tgLink.href, '_blank', 'noopener'); } catch (e2) {}
+        } else if (res.status === 409) {
+          succeed('You’re already on the list.');
+        } else if (res.status === 429) {
+          showError('That’s a few tries in a row. Give it a couple of minutes and go again.');
+        } else if (res.status === 422) {
+          showError('That doesn’t look like a phone number — mind trying again?');
+        } else {
+          showError('Something went wrong on our side. Try again in a moment.');
+        }
+      }).catch(function () {
+        button.disabled = false;
+        button.textContent = label;
+        showError('Couldn’t reach us just now — check your connection and try again.');
       });
     });
+
+    // Coming back from the Telegram app: check immediately rather than
+    // waiting out the poll interval.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) check();
+    });
+    window.addEventListener('focus', check);
+
+    // Resume a confirmation that was in flight when the page was reloaded.
+    var saved = recall();
+    if (saved) {
+      if (tgLink) tgLink.href = BOT_LINK + saved;
+      form.classList.add('sent');
+      watch(saved);
+    }
   }
 
   wireForm('signupForm', 'phone');
