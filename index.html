@@ -183,6 +183,8 @@
     line-height: 0;
   }
 
+  .figures picture { display: block; }
+
   /* contact shadow so the figures sit on the ledge rather than float */
   .figures::after {
     content: "";
@@ -452,7 +454,10 @@
     </h1>
 
     <div class="figures">
-      <img class="couple" src="assets/couple.png" alt="Two figurines sitting together on a bench" width="700" height="724">
+      <picture>
+        <source srcset="assets/couple.webp" type="image/webp">
+        <img class="couple" src="assets/couple.png" alt="Two figurines sitting together on a bench" width="767" height="780">
+      </picture>
     </div>
   </div>
 
